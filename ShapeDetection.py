@@ -1,58 +1,72 @@
-import cv2  # OpenCV Library
-
-# Correct file path for the image
-image_path = r"C:\Users\KIIT\PycharmProjects\ShapeDetection_PSO\images.png"
+import cv2
+import numpy as np
 
 # Load the image
+image_path = r"C:\Users\KIIT\PycharmProjects\ShapeDetection_PSO\image5.jpg"
 image = cv2.imread(image_path)
 
-# Check if the image was loaded correctly
 if image is None:
     print(f"Error: Unable to load image at {image_path}. Check the file path and file integrity.")
     exit(1)
 
-# Convert the image to grayscale
+# Convert to grayscale and apply thresholding
 gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-# Apply a binary threshold to the grayscale image
 _, thresh_image = cv2.threshold(gray_image, 220, 255, cv2.THRESH_BINARY)
 
-# Find contours in the threshold image
-contours, hierarchy = cv2.findContours(thresh_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+# Find contours
+contours, _ = cv2.findContours(thresh_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-# Iterate through each contour to identify and label shapes
-for i, contour in enumerate(contours):
-    if i == 0:  # Skip the first contour as it might be the outer border
+for contour in contours:
+    if cv2.contourArea(contour) < 100:  # Ignore very small contours (noise)
         continue
 
-    # Approximate the shape
-    epsilon = 0.01 * cv2.arcLength(contour, True)
+    # Approximate contour
+    epsilon = 0.02 * cv2.arcLength(contour, True)
     approx = cv2.approxPolyDP(contour, epsilon, True)
 
-    # Draw the contours on the original image
-    cv2.drawContours(image, [contour], 0, (0, 255, 0), 2)
+    # Draw contours
+    cv2.drawContours(image, [approx], 0, (0, 255, 0), 2)
 
-    # Get bounding box coordinates
+    # Bounding box for text placement
     x, y, w, h = cv2.boundingRect(approx)
-    x_mid = int(x + (w / 2))  # Estimate x midpoint
-    y_mid = int(y + (h / 2))  # Estimate y midpoint
-    coords = (x_mid, y_mid)
-    colour = (255, 0, 0)
+    text_x = x + w // 4
+    text_y = y + h // 2
     font = cv2.FONT_HERSHEY_SIMPLEX
+    colour = (255, 0, 0)
 
-    # Identify the shape based on the number of vertices
-    if len(approx) == 3:
-        cv2.putText(image, "Triangle", coords, font, 0.5, colour, 1)
-    elif len(approx) == 4:
-        cv2.putText(image, "Quadrilateral", coords, font, 0.5, colour, 1)
-    elif len(approx) == 5:
-        cv2.putText(image, "Pentagon", coords, font, 0.5, colour, 1)
-    elif len(approx) == 6:
-        cv2.putText(image, "Hexagon", coords, font, 0.5, colour, 1)
+    # Detect polygons based on vertices
+    vertex_count = len(approx)
+
+    if vertex_count == 3:
+        shape_name = "Triangle"
+    elif vertex_count == 4:
+        aspect_ratio = float(w) / h
+        shape_name = "Square" if 0.9 < aspect_ratio < 1.1 else "Rectangle"
+    elif vertex_count == 5:
+        shape_name = "Pentagon"
+    elif vertex_count == 6:
+        shape_name = "Hexagon"
+    elif vertex_count > 6:
+        # Check for Circle or Oval using ellipse fitting
+        if len(contour) > 5:  # Ensure valid ellipse fitting
+            ellipse = cv2.fitEllipse(contour)
+            (center_x, center_y), (major_axis, minor_axis), angle = ellipse
+            aspect_ratio = major_axis / minor_axis
+
+            if 0.9 < aspect_ratio < 1.1:
+                shape_name = "Circle"
+            else:
+                shape_name = "Oval"
+        else:
+            shape_name = "Polygon"
+
     else:
-        cv2.putText(image, "Circle", coords, font, 0.5, colour, 1)
+        shape_name = "Polygon"
 
-# Display the image with detected shapes
-cv2.imshow("Shapes Detected", image)
+    # Put the detected shape name on the image
+    cv2.putText(image, shape_name, (text_x, text_y), font, 0.6, colour, 2)
+
+# Display the processed image
+cv2.imshow("Fixed Shape Detection", image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
