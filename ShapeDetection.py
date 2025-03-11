@@ -1,72 +1,69 @@
+import os
 import cv2
 import numpy as np
+from skimage.feature import hog
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import joblib
 
-# Load the image
-image_path = r"C:\Users\KIIT\PycharmProjects\ShapeDetection_PSO\image5.jpg"
-image = cv2.imread(image_path)
+# Define dataset path
+DATASET_PATH = "dataset/train"
+CATEGORIES = ["circle", "kite", "parallelogram", "rectangle", "rhombus", "square", "trapezoid", "triangle"]
 
-if image is None:
-    print(f"Error: Unable to load image at {image_path}. Check the file path and file integrity.")
-    exit(1)
 
-# Convert to grayscale and apply thresholding
-gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-_, thresh_image = cv2.threshold(gray_image, 220, 255, cv2.THRESH_BINARY)
+# Function to extract HOG features
+def extract_hog_features(image):
+    if image is None:
+        return None  # Return None if the image is invalid
+    image = cv2.resize(image, (64, 64))  # Resize for uniformity
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+    features = hog(gray_image, orientations=9, pixels_per_cell=(8, 8),
+                   cells_per_block=(2, 2), visualize=False)  # Disable visualization for speed
+    return features
 
-# Find contours
-contours, _ = cv2.findContours(thresh_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-for contour in contours:
-    if cv2.contourArea(contour) < 100:  # Ignore very small contours (noise)
+# Load dataset
+X = []  # Feature vectors
+y = []  # Labels
+
+for label, category in enumerate(CATEGORIES):
+    folder_path = os.path.join(DATASET_PATH, category)
+    if not os.path.exists(folder_path):
+        print(f"Warning: Folder '{folder_path}' not found, skipping...")
         continue
+    for filename in os.listdir(folder_path):
+        img_path = os.path.join(folder_path, filename)
+        img = cv2.imread(img_path)  # Read image
+        if img is None:
+            print(f"Warning: Could not read image '{img_path}', skipping...")
+            continue
 
-    # Approximate contour
-    epsilon = 0.02 * cv2.arcLength(contour, True)
-    approx = cv2.approxPolyDP(contour, epsilon, True)
+        features = extract_hog_features(img)
+        if features is not None:
+            X.append(features)
+            y.append(label)  # Assign numerical label
 
-    # Draw contours
-    cv2.drawContours(image, [approx], 0, (0, 255, 0), 2)
+# Convert to NumPy arrays
+X = np.array(X)
+y = np.array(y)
 
-    # Bounding box for text placement
-    x, y, w, h = cv2.boundingRect(approx)
-    text_x = x + w // 4
-    text_y = y + h // 2
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    colour = (255, 0, 0)
+# Check if dataset is empty
+if len(X) == 0:
+    raise ValueError("Dataset is empty. Please add images before training.")
 
-    # Detect polygons based on vertices
-    vertex_count = len(approx)
+# Split data into training and validation sets
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    if vertex_count == 3:
-        shape_name = "Triangle"
-    elif vertex_count == 4:
-        aspect_ratio = float(w) / h
-        shape_name = "Square" if 0.9 < aspect_ratio < 1.1 else "Rectangle"
-    elif vertex_count == 5:
-        shape_name = "Pentagon"
-    elif vertex_count == 6:
-        shape_name = "Hexagon"
-    elif vertex_count > 6:
-        # Check for Circle or Oval using ellipse fitting
-        if len(contour) > 5:  # Ensure valid ellipse fitting
-            ellipse = cv2.fitEllipse(contour)
-            (center_x, center_y), (major_axis, minor_axis), angle = ellipse
-            aspect_ratio = major_axis / minor_axis
+# Train Linear SVM model
+svm_model = SVC(kernel='linear', C=1.0, random_state=42)
+svm_model.fit(X_train, y_train)
 
-            if 0.9 < aspect_ratio < 1.1:
-                shape_name = "Circle"
-            else:
-                shape_name = "Oval"
-        else:
-            shape_name = "Polygon"
+# Evaluate model
+y_pred = svm_model.predict(X_val)
+accuracy = accuracy_score(y_val, y_pred) * 100  # Convert to percentage
+print(f"Validation Accuracy: {accuracy:.2f}%")  # Display as percentage
 
-    else:
-        shape_name = "Polygon"
-
-    # Put the detected shape name on the image
-    cv2.putText(image, shape_name, (text_x, text_y), font, 0.6, colour, 2)
-
-# Display the processed image
-cv2.imshow("Fixed Shape Detection", image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+# Save the trained model
+joblib.dump(svm_model, "shape_classifier_svm.pkl")
+print("Model saved as 'shape_classifier_svm.pkl'")
