@@ -7,11 +7,11 @@ import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Define dataset path
+# Define dataset path and categories
+DATASET_PATH = "dataset"
 CATEGORIES = ["circle", "kite", "parallelogram", "rectangle", "rhombus", "square", "trapezoid", "triangle"]
 
-
-# Function to extract HOG features (same as in your training code)
+# Function to extract HOG features (same as training code)
 def extract_hog_features(image):
     if image is None:
         return None
@@ -22,13 +22,12 @@ def extract_hog_features(image):
     return features
 
 
-def evaluate_model(model, dataset_path, categories):
-    # Lists to store features and labels
-    X_test = []
-    y_test = []
+# Function to load dataset (test only)
+def load_dataset(dataset_path):
+    X = []  # Feature vectors
+    y = []  # Labels
 
-    # Load test images
-    for label, category in enumerate(categories):
+    for label, category in enumerate(CATEGORIES):
         folder_path = os.path.join(dataset_path, category)
         if not os.path.exists(folder_path):
             print(f"Warning: Folder '{folder_path}' not found, skipping...")
@@ -43,34 +42,33 @@ def evaluate_model(model, dataset_path, categories):
 
             features = extract_hog_features(img)
             if features is not None:
-                X_test.append(features)
-                y_test.append(label)
+                X.append(features)
+                y.append(label)
 
     # Convert to NumPy arrays
-    X_test = np.array(X_test)
-    y_test = np.array(y_test)
+    X = np.array(X)
+    y = np.array(y)
 
+    return X, y
+
+
+# Function to evaluate the model
+def evaluate_model(model, X, y):
     # Make predictions
-    y_pred = model.predict(X_test)
+    y_pred = model.predict(X)
 
     # Calculate accuracy
-    accuracy = accuracy_score(y_test, y_pred) * 100
-    print(f"Accuracy: {accuracy:.2f}%")
+    accuracy = accuracy_score(y, y_pred) * 100
+    print(f"Test Accuracy: {accuracy:.2f}%")
 
-    return X_test, y_test, y_pred
-
-
-def detailed_evaluation(y_true, y_pred, categories):
-    # Print classification report
+    # Show classification report
     print("\nClassification Report:")
-    print(classification_report(y_true, y_pred, target_names=categories))
+    print(classification_report(y, y_pred, target_names=CATEGORIES))
 
-    # Generate confusion matrix
-    cm = confusion_matrix(y_true, y_pred)
-
-    # Plot confusion matrix
+    # Show confusion matrix
+    cm = confusion_matrix(y, y_pred)
     plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=categories, yticklabels=categories)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=CATEGORIES, yticklabels=CATEGORIES)
     plt.xlabel('Predicted Label')
     plt.ylabel('True Label')
     plt.title('Confusion Matrix')
@@ -80,16 +78,21 @@ def detailed_evaluation(y_true, y_pred, categories):
 
 if __name__ == "__main__":
     # Load the trained model
-    model = joblib.load("shape_classifier_svm.pkl")
+    model_path = "shape_classifier_svm.pkl"
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Trained model not found at '{model_path}'. Train the model first.")
 
-    # Evaluate on test dataset
-    print("\nEvaluating on test dataset:")
-    X_test, y_test, y_test_pred = evaluate_model(model, "dataset/test", CATEGORIES)
+    print("Loading trained model...")
+    model = joblib.load(model_path)
+    print("Model loaded successfully!")
 
-    # Evaluate on validation dataset
-    print("\nEvaluating on validation dataset:")
-    X_val, y_val, y_val_pred = evaluate_model(model, "dataset/val", CATEGORIES)
+    # Load test data
+    print("Loading test data...")
+    X_test, y_test = load_dataset(os.path.join(DATASET_PATH, "test"))
 
-    # Detailed evaluation on test dataset
-    print("\nDetailed evaluation on test dataset:")
-    detailed_evaluation(y_test, y_test_pred, CATEGORIES)
+    if len(X_test) == 0:
+        raise ValueError("Test dataset is empty. Please add test images to evaluate the model.")
+
+    # Evaluate the model on test data
+    print("Evaluating model on test data...")
+    evaluate_model(model, X_test, y_test)

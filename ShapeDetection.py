@@ -3,67 +3,81 @@ import cv2
 import numpy as np
 from skimage.feature import hog
 from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 import joblib
 
-# Define dataset path
-DATASET_PATH = "dataset/train"
+# Define dataset path and categories
+DATASET_PATH = "dataset"
 CATEGORIES = ["circle", "kite", "parallelogram", "rectangle", "rhombus", "square", "trapezoid", "triangle"]
-
 
 # Function to extract HOG features
 def extract_hog_features(image):
     if image is None:
-        return None  # Return None if the image is invalid
-    image = cv2.resize(image, (64, 64))  # Resize for uniformity
-    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+        return None
+    image = cv2.resize(image, (64, 64))
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     features = hog(gray_image, orientations=9, pixels_per_cell=(8, 8),
-                   cells_per_block=(2, 2), visualize=False)  # Disable visualization for speed
+                   cells_per_block=(2, 2), visualize=False)
     return features
 
 
-# Load dataset
-X = []  # Feature vectors
-y = []  # Labels
+# Function to load data from a given folder (train/val)
+def load_dataset(dataset_path):
+    X = []  # Feature vectors
+    y = []  # Labels
 
-for label, category in enumerate(CATEGORIES):
-    folder_path = os.path.join(DATASET_PATH, category)
-    if not os.path.exists(folder_path):
-        print(f"Warning: Folder '{folder_path}' not found, skipping...")
-        continue
-    for filename in os.listdir(folder_path):
-        img_path = os.path.join(folder_path, filename)
-        img = cv2.imread(img_path)  # Read image
-        if img is None:
-            print(f"Warning: Could not read image '{img_path}', skipping...")
+    for label, category in enumerate(CATEGORIES):
+        folder_path = os.path.join(dataset_path, category)
+        if not os.path.exists(folder_path):
+            print(f"Warning: Folder '{folder_path}' not found, skipping...")
             continue
 
-        features = extract_hog_features(img)
-        if features is not None:
-            X.append(features)
-            y.append(label)  # Assign numerical label
+        for filename in os.listdir(folder_path):
+            img_path = os.path.join(folder_path, filename)
+            img = cv2.imread(img_path)
+            if img is None:
+                print(f"Warning: Could not read image '{img_path}', skipping...")
+                continue
 
-# Convert to NumPy arrays
-X = np.array(X)
-y = np.array(y)
+            features = extract_hog_features(img)
+            if features is not None:
+                X.append(features)
+                y.append(label)
 
-# Check if dataset is empty
-if len(X) == 0:
-    raise ValueError("Dataset is empty. Please add images before training.")
+    # Convert to NumPy arrays
+    X = np.array(X)
+    y = np.array(y)
 
-# Split data into training and validation sets
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    return X, y
 
-# Train Linear SVM model
-svm_model = SVC(kernel='linear', C=1.0, random_state=42)
-svm_model.fit(X_train, y_train)
 
-# Evaluate model
-y_pred = svm_model.predict(X_val)
-accuracy = accuracy_score(y_val, y_pred) * 100  # Convert to percentage
-print(f"Validation Accuracy: {accuracy:.2f}%")  # Display as percentage
+if __name__ == "__main__":
+    # Load training data
+    print("Loading training data...")
+    X_train, y_train = load_dataset(os.path.join(DATASET_PATH, "train"))
 
-# Save the trained model
-joblib.dump(svm_model, "shape_classifier_svm.pkl")
-print("Model saved as 'shape_classifier_svm.pkl'")
+    # Load validation data
+    print("Loading validation data...")
+    X_val, y_val = load_dataset(os.path.join(DATASET_PATH, "val"))
+
+    # Check if datasets are empty
+    if len(X_train) == 0:
+        raise ValueError("Training dataset is empty. Please add images before training.")
+    if len(X_val) == 0:
+        print("Warning: Validation dataset is empty. The model will be trained without validation.")
+
+    # Train SVM model
+    print("Training SVM model...")
+    svm_model = SVC(kernel='linear', C=1.0, random_state=42)
+    svm_model.fit(X_train, y_train)
+    print("Model training complete!")
+
+    # Validate the model if validation data is available
+    if len(X_val) > 0:
+        y_val_pred = svm_model.predict(X_val)
+        accuracy = accuracy_score(y_val, y_val_pred) * 100
+        print(f"Validation Accuracy: {accuracy:.2f}%")
+
+    # Save the trained model
+    joblib.dump(svm_model, "shape_classifier_svm.pkl")
+    print("Model saved as 'shape_classifier_svm.pkl'")

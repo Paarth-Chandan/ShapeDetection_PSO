@@ -52,7 +52,7 @@ def predict_shape(image_path):
 
 
 # Test an image
-image_path = "image6.jpeg"  # Replace with your image path
+image_path = "image9.jpeg"  # Replace with your image path
 shape = predict_shape(image_path)
 
 if shape:
